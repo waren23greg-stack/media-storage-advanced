@@ -6,7 +6,6 @@ const cors = require('cors');
 const crypto = require('crypto');
 const sharp = require('sharp');
 const ffmpeg = require('fluent-ffmpeg');
-const os = require('os');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -14,6 +13,7 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use(express.static(__dirname)); // Serve static files!
 
 // Create directories
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -25,7 +25,7 @@ const processedDir = path.join(__dirname, 'processed');
   }
 });
 
-// Configure multer for file storage
+// Configure multer
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, uploadsDir);
@@ -36,7 +36,6 @@ const storage = multer.diskStorage({
   }
 });
 
-// File filter - allow only image and video files
 const fileFilter = (req, file, cb) => {
   const allowedMimes = [
     'image/jpeg',
@@ -60,7 +59,7 @@ const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
   limits: {
-    fileSize: 500 * 1024 * 1024 // 500MB limit
+    fileSize: 500 * 1024 * 1024
   }
 });
 
@@ -82,7 +81,6 @@ function writeDB(data) {
   fs.writeFileSync(dbPath, JSON.stringify(data, null, 2));
 }
 
-// Get file size
 function getFileSize(filePath) {
   try {
     return fs.statSync(filePath).size;
@@ -91,16 +89,11 @@ function getFileSize(filePath) {
   }
 }
 
-// COMPRESSION & ENHANCEMENT LOGIC
-
-/**
- * Compress and enhance image
- */
+// Image processing
 async function processImage(inputPath, outputPath) {
   try {
     const originalSize = getFileSize(inputPath);
     const metadata = await sharp(inputPath).metadata();
-    const targetSize = Math.floor(originalSize * 0.565);
     
     let pipeline = sharp(inputPath);
     
@@ -162,13 +155,10 @@ async function processImage(inputPath, outputPath) {
   }
 }
 
-/**
- * Compress and enhance video
- */
+// Video processing
 async function processVideo(inputPath, outputPath) {
   return new Promise((resolve, reject) => {
     const originalSize = getFileSize(inputPath);
-    const targetSize = Math.floor(originalSize * 0.565);
     
     ffmpeg(inputPath)
       .videoCodec('libx265')
@@ -183,7 +173,7 @@ async function processVideo(inputPath, outputPath) {
       ])
       .withOutputFPS(30)
       .on('start', (cmd) => {
-        console.log('Processing video with enhancement filters...');
+        console.log('Processing video...');
       })
       .on('error', (err) => {
         console.error('Video processing error:', err);
@@ -198,17 +188,13 @@ async function processVideo(inputPath, outputPath) {
           finalSize,
           compressionRatio: parseFloat(compressionRatio),
           quality: 'Enhanced 114%',
-          codec: 'H.265 (HEVC)',
-          enhancementMethod: 'Adaptive quality boosting'
+          codec: 'H.265 (HEVC)'
         });
       })
       .save(outputPath);
   });
 }
 
-/**
- * Main processing function
- */
 async function processMedia(inputPath, filename) {
   try {
     const ext = path.extname(filename).toLowerCase();
@@ -240,8 +226,6 @@ async function processMedia(inputPath, filename) {
 }
 
 // Routes
-
-// Health check
 app.get('/health', (req, res) => {
   res.json({
     status: 'Server is running',
@@ -252,7 +236,7 @@ app.get('/health', (req, res) => {
     }
   });
 });
-// Upload and process file
+
 app.post('/upload', upload.single('file'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file provided' });
@@ -262,10 +246,8 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     const originalPath = req.file.path;
     const originalSize = getFileSize(originalPath);
     
-    // Process the file
     const { outputPath, stats } = await processMedia(originalPath, req.file.filename);
     
-    // Create file record with enhancement stats
     const fileRecord = {
       id: crypto.randomUUID(),
       originalName: req.file.originalname,
@@ -283,7 +265,6 @@ app.post('/upload', upload.single('file'), async (req, res) => {
       stats: stats
     };
 
-    // Save to database
     const db = readDB();
     db.files.push(fileRecord);
     writeDB(db);
@@ -303,17 +284,14 @@ app.post('/upload', upload.single('file'), async (req, res) => {
   }
 });
 
-// Download file
 app.get('/download/:filename', (req, res) => {
   const filename = req.params.filename;
   const filePath = path.join(processedDir, filename);
 
-  // Security: prevent directory traversal
   if (!path.resolve(filePath).startsWith(path.resolve(processedDir))) {
     return res.status(403).json({ error: 'Access denied' });
   }
 
-  // Check if file exists
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: 'File not found' });
   }
@@ -321,7 +299,6 @@ app.get('/download/:filename', (req, res) => {
   res.download(filePath);
 });
 
-// Get all files metadata
 app.get('/files', (req, res) => {
   const db = readDB();
   res.json(db.files.map(file => ({
@@ -331,7 +308,6 @@ app.get('/files', (req, res) => {
   })));
 });
 
-// Get single file metadata by ID
 app.get('/files/:id', (req, res) => {
   const db = readDB();
   const file = db.files.find(f => f.id === req.params.id);
@@ -347,7 +323,6 @@ app.get('/files/:id', (req, res) => {
   });
 });
 
-// Delete file
 app.delete('/delete/:id', (req, res) => {
   const db = readDB();
   const fileIndex = db.files.findIndex(f => f.id === req.params.id);
@@ -359,23 +334,19 @@ app.delete('/delete/:id', (req, res) => {
   const file = db.files[fileIndex];
   const filePath = path.join(processedDir, file.processedFilename);
 
-  // Delete file from disk
   if (fs.existsSync(filePath)) {
     fs.unlinkSync(filePath);
   }
 
-  // Delete from database
   db.files.splice(fileIndex, 1);
   writeDB(db);
 
   res.json({ success: true, message: 'File deleted successfully' });
 });
 
-// Delete all files
 app.delete('/files', (req, res) => {
   const db = readDB();
 
-  // Delete all files from disk
   db.files.forEach(file => {
     const filePath = path.join(processedDir, file.processedFilename);
     if (fs.existsSync(filePath)) {
@@ -383,14 +354,12 @@ app.delete('/files', (req, res) => {
     }
   });
 
-  // Clear database
   db.files = [];
   writeDB(db);
 
   res.json({ success: true, message: 'All files deleted' });
 });
 
-// Get compression statistics
 app.get('/stats', (req, res) => {
   const db = readDB();
   
@@ -414,7 +383,6 @@ app.get('/stats', (req, res) => {
   res.json(stats);
 });
 
-// Initialize and start
 initializeDB();
 app.listen(PORT, () => {
   console.log(`\n🚀 Advanced Media Storage Server running on http://localhost:${PORT}`);

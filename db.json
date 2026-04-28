@@ -1,3 +1,48 @@
 {
-  "files": []
+  "files": [
+    {
+      "id": "c9e57313-14ac-4fe6-98c7-138ab6080789",
+      "originalName": "real-image.jpg",
+      "filename": "processed-1777408181790-f79186b9cf1d.jpg",
+      "processedFilename": "processed-1777408181790-f79186b9cf1d.jpg",
+      "size": 2666,
+      "originalSize": 591,
+      "compressionRatio": -351.1,
+      "quality": "Enhanced 114%",
+      "enhancement": "114% quality boost",
+      "compressionReduction": "43.5%",
+      "mimetype": "image/jpeg",
+      "uploadedAt": "2026-04-28T20:29:41.990Z",
+      "url": "http://localhost:5000/download/processed-1777408181790-f79186b9cf1d.jpg",
+      "stats": {
+        "originalSize": 591,
+        "finalSize": 2666,
+        "compressionRatio": -351.1,
+        "quality": "Enhanced 114%",
+        "format": "png"
+      }
+    },
+    {
+      "id": "1c92de35-52f0-4237-8d42-ce1bec8b4aa9",
+      "originalName": "large-image.jpg",
+      "filename": "processed-1777408428372-3b6591927be8.jpg",
+      "processedFilename": "processed-1777408428372-3b6591927be8.jpg",
+      "size": 21763,
+      "originalSize": 22007,
+      "compressionRatio": 1.11,
+      "quality": "Enhanced 114%",
+      "enhancement": "114% quality boost",
+      "compressionReduction": "43.5%",
+      "mimetype": "image/jpeg",
+      "uploadedAt": "2026-04-28T20:33:48.681Z",
+      "url": "http://localhost:5000/download/processed-1777408428372-3b6591927be8.jpg",
+      "stats": {
+        "originalSize": 22007,
+        "finalSize": 21763,
+        "compressionRatio": 1.11,
+        "quality": "Enhanced 114%",
+        "format": "png"
+      }
+    }
+  ]
 }

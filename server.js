@@ -9,6 +9,7 @@ const sharp = require('sharp');
 const bcrypt = require('bcryptjs');
 const db = require('./warenvault');
 const { generateToken, authenticate } = require('./auth');
+const storage = require('./storage');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -23,7 +24,7 @@ const processedDir = path.join(__dirname, 'processed');
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 });
 
-const storage = multer.diskStorage({
+const multerStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
   filename: (req, file, cb) => {
     const unique = Date.now() + '-' + crypto.randomBytes(6).toString('hex');
@@ -32,7 +33,7 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({
-  storage,
+  storage: multerStorage,
   fileFilter: (req, file, cb) => {
     const allowed = ['image/jpeg','image/png','image/gif','image/webp','video/mp4','video/webm','video/quicktime','video/x-msvideo'];
     allowed.includes(file.mimetype) ? cb(null, true) : cb(new Error('Only images and videos allowed'));
@@ -57,13 +58,19 @@ async function processImage(inputPath, outputPath) {
   return { originalSize, finalSize, compressionRatio: parseFloat(((1 - finalSize / originalSize) * 100).toFixed(2)), quality: 'Enhanced 114%', format: metadata.format };
 }
 
-async function processMedia(inputPath, filename) {
+async function processAndStore(inputPath, filename, mimetype) {
   const ext = path.extname(filename).toLowerCase();
-  const outputPath = path.join(processedDir, 'processed-' + filename);
   const isImage = ['.jpg','.jpeg','.png','.gif','.webp'].includes(ext);
   if (!isImage) throw new Error('Unsupported media type');
+  const processedFilename = 'processed-' + filename;
+  const outputPath = path.join(processedDir, processedFilename);
   const stats = await processImage(inputPath, outputPath);
-  return { outputPath, stats };
+  const objectName = `files/${processedFilename}`;
+  await storage.uploadFile(outputPath, objectName, mimetype);
+  const url = await storage.getFileUrl(objectName);
+  fs.unlinkSync(inputPath);
+  fs.unlinkSync(outputPath);
+  return { objectName, url, stats };
 }
 
 // ── AUTH ROUTES ──────────────────────────────────────────
@@ -96,11 +103,9 @@ app.post('/auth/login', async (req, res) => {
   if (!email || !password)
     return res.status(400).json({ error: 'Email and password are required.' });
   const user = db.getUserByEmail(email);
-  if (!user)
-    return res.status(401).json({ error: 'Invalid credentials.' });
+  if (!user) return res.status(401).json({ error: 'Invalid credentials.' });
   const match = await bcrypt.compare(password, user.password);
-  if (!match)
-    return res.status(401).json({ error: 'Invalid credentials.' });
+  if (!match) return res.status(401).json({ error: 'Invalid credentials.' });
   db.updateLastLogin(user.id);
   const token = generateToken(user);
   res.json({
@@ -138,57 +143,59 @@ app.post('/auth/logout', authenticate, (req, res) => {
   res.json({ success: true, message: 'Logged out successfully.' });
 });
 
-// ── FILE ROUTES (protected) ──────────────────────────────
+// ── FILE ROUTES ──────────────────────────────────────────
 
 app.post('/upload', authenticate, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file provided.' });
   try {
-    const { outputPath, stats } = await processMedia(req.file.path, req.file.filename);
+    const { objectName, url, stats } = await processAndStore(req.file.path, req.file.filename, req.file.mimetype);
     const fileRecord = {
       uuid: crypto.randomUUID(),
       userId: req.user.id,
       originalName: req.file.originalname,
-      filename: path.basename(outputPath),
-      processedFilename: path.basename(outputPath),
+      filename: objectName,
+      processedFilename: objectName,
       size: stats.finalSize,
       originalSize: stats.originalSize,
       compressionRatio: stats.compressionRatio,
       mimetype: req.file.mimetype,
-      url: `${req.protocol}://${req.get('host')}/download/${path.basename(outputPath)}`
+      url
     };
     db.createFile(fileRecord);
     db.updateStorageUsed(req.user.id, stats.finalSize);
     res.json({
       success: true,
-      message: `WarenVault compressed by ${stats.compressionRatio}% with 114% quality boost!`,
-      file: { ...fileRecord, quality: stats.quality, enhancement: '114%' }
+      message: `WarenVault stored in MinIO — compressed ${stats.compressionRatio}% with 114% quality boost!`,
+      file: { ...fileRecord, quality: stats.quality }
     });
   } catch (error) {
     res.status(500).json({ error: 'File processing failed', details: error.message });
   }
 });
 
-app.get('/files', authenticate, (req, res) => {
+app.get('/files', authenticate, async (req, res) => {
   const files = db.getFilesByUser(req.user.id);
-  res.json(files);
+  const filesWithUrls = await Promise.all(files.map(async file => {
+    const freshUrl = await storage.getFileUrl(file.filename);
+    return { ...file, url: freshUrl };
+  }));
+  res.json(filesWithUrls);
 });
 
-app.get('/download/:filename', (req, res) => {
-  const filePath = path.join(processedDir, req.params.filename);
-  if (!path.resolve(filePath).startsWith(path.resolve(processedDir)))
-    return res.status(403).json({ error: 'Access denied.' });
-  if (!fs.existsSync(filePath))
-    return res.status(404).json({ error: 'File not found.' });
-  res.download(filePath);
+app.get('/download/:filename', authenticate, async (req, res) => {
+  const file = db.getFileById(req.params.filename, req.user.id);
+  if (!file) return res.status(404).json({ error: 'File not found.' });
+  const stream = await storage.getFileStream(file.filename);
+  res.setHeader('Content-Disposition', `attachment; filename="${file.original_name}"`);
+  stream.pipe(res);
 });
 
-app.delete('/delete/:uuid', authenticate, (req, res) => {
+app.delete('/delete/:uuid', authenticate, async (req, res) => {
   const file = db.getFileById(req.params.uuid, req.user.id);
   if (!file) return res.status(404).json({ error: 'File not found.' });
-  const filePath = path.join(processedDir, file.processed_filename);
-  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  await storage.deleteFile(file.filename);
   db.deleteFile(req.params.uuid, req.user.id);
-  res.json({ success: true, message: 'File deleted.' });
+  res.json({ success: true, message: 'File deleted from WarenVault.' });
 });
 
 app.get('/stats', authenticate, (req, res) => {
@@ -200,17 +207,24 @@ app.get('/stats', authenticate, (req, res) => {
     totalFinalSize: stats.total_final_size || 0,
     averageCompression: parseFloat((stats.avg_compression || 0).toFixed(2)),
     totalStorageSaved: `${(saved / (1024 * 1024)).toFixed(2)} MB`,
-    enhancement: '114% quality boost'
+    enhancement: '114% quality boost',
+    storage: 'MinIO WarenVault'
   });
 });
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'WarenVault is running', version: '3.0.0', database: 'WarenVault SQLite' });
+  res.json({ status: 'WarenVault is running', version: '4.0.0', database: 'WarenVault SQLite', storage: 'MinIO' });
 });
 
-app.listen(PORT, () => {
-  console.log(`\n WarenVault Media Storage v3.0`);
-  console.log(` Running on http://localhost:${PORT}`);
-  console.log(` Database: WarenVault SQLite`);
-  console.log(` Auth: JWT enabled\n`);
+storage.initialize().then(() => {
+  app.listen(PORT, () => {
+    console.log(`\n WarenVault Media Storage v4.0`);
+    console.log(` Running on http://localhost:${PORT}`);
+    console.log(` Database: WarenVault SQLite`);
+    console.log(` Cloud Storage: MinIO (warenvault bucket)`);
+    console.log(` Auth: JWT enabled\n`);
+  });
+}).catch(err => {
+  console.error('Failed to connect to MinIO:', err.message);
+  process.exit(1);
 });

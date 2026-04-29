@@ -10,9 +10,17 @@ const bcrypt = require('bcryptjs');
 const db = require('./warenvault');
 const { generateToken, authenticate } = require('./auth');
 const minio = require('./storage');
+const { helmetConfig, globalLimiter, authLimiter, uploadLimiter, sanitizeBody, validateFile, requestId, securityLogger, blockSuspicious, hpp } = require('./security');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+app.use(helmetConfig);
+app.use(requestId);
+app.use(securityLogger);
+app.use(globalLimiter);
+app.use(blockSuspicious);
+app.use(hpp());
+app.use(sanitizeBody);
 app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
@@ -55,7 +63,7 @@ async function processAndStore(inputPath, filename, mimetype) {
   return { objectName, url, stats };
 }
 
-app.post('/auth/register', async (req, res) => {
+app.post('/auth/register', authLimiter, async (req, res) => {
   const { username, email, password } = req.body;
   if (password.length < 6) return res.status(400).json({ error: 'Password min 6 characters.' });
   if (db.getUserByEmail(email)) return res.status(409).json({ error: 'Email already registered.' });
@@ -68,9 +76,10 @@ app.post('/auth/register', async (req, res) => {
   res.status(201).json({ success: true, message: 'Welcome to WarenVault, ' + username + '!', token, user: { id: user.uuid, username: user.username, email: user.email, role: user.role } });
 });
 
-app.post('/auth/login', async (req, res) => {
+app.post('/auth/login', authLimiter, async (req, res) => {
   const { email, password } = req.body;
   const user = db.getUserByEmail(email);
+  if (user == null) return res.status(401).json({ error: "Invalid credentials." });
   const match = await bcrypt.compare(password, user.password);
   db.updateLastLogin(user.id);
   const token = generateToken(user);
@@ -84,7 +93,7 @@ app.get('/auth/me', authenticate, (req, res) => {
 
 app.post('/auth/logout', authenticate, (req, res) => { res.json({ success: true, message: 'Logged out.' }); });
 
-app.post('/upload', authenticate, upload.single('file'), async (req, res) => {
+app.post('/upload', authenticate, uploadLimiter, upload.single('file'), validateFile, async (req, res) => {
   try {
     const { objectName, url, stats } = await processAndStore(req.file.path, req.file.filename, req.file.mimetype);
     const fileRecord = { uuid: crypto.randomUUID(), userId: req.user.id, originalName: req.file.originalname, filename: objectName, processedFilename: objectName, size: stats.finalSize, originalSize: stats.originalSize, compressionRatio: stats.compressionRatio, mimetype: req.file.mimetype, url };

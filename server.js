@@ -319,8 +319,9 @@ minio.initialize().then(async () => {
     console.log(' Cloud Storage: MinIO (warenvault bucket)');
     console.log(' Auth: JWT enabled');
   });
-}).catch(err => {
+}).catch(async (err) => {
   console.warn('MinIO unavailable, continuing without cloud storage:', err.message);
+  await seedDefaultAdmin();
   app.listen(PORT, () => {
     console.log('WarenVault running on port ' + PORT);
     console.log('Database: SQLite | Storage: local fallback');

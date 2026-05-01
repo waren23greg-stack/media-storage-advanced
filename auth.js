@@ -50,3 +50,16 @@ function adminOnly(req, res, next) {
 }
 
 module.exports = { generateToken, hashToken, authenticate, adminOnly };
+
+// Auto-seed default admin on startup
+function seedDefaultAdmin() {
+  const db = require('./warenvault');
+  const crypto = require('crypto');
+  if (!db.getUserByEmail('gregewaren@gmail.com')) {
+    const uuid = crypto.randomUUID();
+    const hashed = require('bcryptjs').hashSync('Admin1234', 12);
+    db.createUser(uuid, 'gregewaren', 'gregewaren@gmail.com', hashed);
+    console.log('[Seed] Admin account created: gregewaren@gmail.com');
+  }
+}
+module.exports.seedDefaultAdmin = seedDefaultAdmin;

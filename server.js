@@ -8,7 +8,7 @@ const crypto = require('crypto');
 const sharp = require('sharp');
 const bcrypt = require('bcryptjs');
 const db = require('./warenvault');
-const { generateToken, authenticate } = require('./auth');
+const { generateToken, authenticate, seedDefaultAdmin } = require('./auth');
 const minio = require('./storage');
 const {
   helmetConfig, globalLimiter, authLimiter, uploadLimiter,
@@ -311,6 +311,7 @@ app.post('/nest/listings/import', (req, res) => {
 });
 
 minio.initialize().then(() => {
+  seedDefaultAdmin();
   app.listen(PORT, () => {
     console.log('WarenVault Media Storage v4.0');
     console.log(` Running on http://localhost:${PORT}`);

@@ -318,6 +318,9 @@ minio.initialize().then(() => {
     console.log(' Auth: JWT enabled');
   });
 }).catch(err => {
-  console.error('MinIO connection failed:', err.message);
-  process.exit(1);
+  console.warn('MinIO unavailable, continuing without cloud storage:', err.message);
+  app.listen(PORT, () => {
+    console.log('WarenVault running on port ' + PORT);
+    console.log('Database: SQLite | Storage: local fallback');
+  });
 });

@@ -241,6 +241,74 @@ app.get('/health', (req, res) => {
 
 // ── Start ──────────────────────────────────────────────────────────────────
 
+
+// ── NestFinderCuk REST API ────────────────────────────────────────────────────
+
+const NEST_COLLECTIONS = [
+  'listings','caretaker_contacts','favourites','reviews',
+  'payments','reports','storage_seekers','storage_hosts',
+  'storage_bookings','host_verifications'
+];
+
+app.get('/nest/:collection', (req, res) => {
+  const { collection } = req.params;
+  if (!NEST_COLLECTIONS.includes(collection))
+    return res.status(404).json({ error: 'Unknown collection' });
+  const filters = {};
+  for (const [k, v] of Object.entries(req.query)) {
+    const safe = k.replace(/[^a-zA-Z0-9_]/g, '');
+    if (safe) filters[safe] = v;
+  }
+  try { res.json(db._nestList(collection, filters)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/nest/:collection/:id', (req, res) => {
+  const { collection, id } = req.params;
+  if (!NEST_COLLECTIONS.includes(collection))
+    return res.status(404).json({ error: 'Unknown collection' });
+  const doc = db._nestGet(collection, id);
+  if (!doc) return res.status(404).json({ error: 'Not found' });
+  res.json(doc);
+});
+
+app.post('/nest/:collection', authenticate, (req, res) => {
+  const { collection } = req.params;
+  if (!NEST_COLLECTIONS.includes(collection))
+    return res.status(404).json({ error: 'Unknown collection' });
+  const doc = { id: crypto.randomUUID(), ...req.body, created_at: new Date().toISOString() };
+  try { db._nestCreate(collection, doc); res.status(201).json(doc); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/nest/:collection/:id', authenticate, (req, res) => {
+  const { collection, id } = req.params;
+  if (!NEST_COLLECTIONS.includes(collection))
+    return res.status(404).json({ error: 'Unknown collection' });
+  if (!db._nestGet(collection, id)) return res.status(404).json({ error: 'Not found' });
+  try { db._nestPatch(collection, id, req.body); res.json(db._nestGet(collection, id)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/nest/:collection/:id', authenticate, (req, res) => {
+  const { collection, id } = req.params;
+  if (!NEST_COLLECTIONS.includes(collection))
+    return res.status(404).json({ error: 'Unknown collection' });
+  db._nestDelete(collection, id);
+  res.json({ success: true });
+});
+
+// Bulk import listings (no auth needed for initial seed)
+app.post('/nest/listings/import', (req, res) => {
+  const listings = req.body;
+  if (!Array.isArray(listings)) return res.status(400).json({ error: 'Send an array' });
+  let count = 0;
+  for (const r of listings) {
+    try { db._nestCreate('listings', { id: r.id || crypto.randomUUID(), ...r }); count++; } catch {}
+  }
+  res.json({ imported: count });
+});
+
 minio.initialize().then(() => {
   app.listen(PORT, () => {
     console.log('WarenVault Media Storage v4.0');

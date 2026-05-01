@@ -140,6 +140,74 @@ class WarenVault {
       -- Session token lookup (used by authenticate middleware)
       CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token_hash);
       CREATE INDEX IF NOT EXISTS idx_sessions_user  ON sessions(user_id);
+      -- NestFinderCuk Tables
+      CREATE TABLE IF NOT EXISTS listings (
+        id               TEXT PRIMARY KEY,
+        title            TEXT NOT NULL,
+        type             TEXT,
+        price            REAL,
+        location         TEXT,
+        description      TEXT,
+        water_included   INTEGER DEFAULT 0,
+        wifi_available   INTEGER DEFAULT 0,
+        available        INTEGER DEFAULT 1,
+        photos           TEXT DEFAULT '[]',
+        contact_fee      REAL,
+        listing_type     TEXT DEFAULT 'rental',
+        price_per_night  REAL,
+        max_guests       INTEGER,
+        amenities        TEXT,
+        min_nights       INTEGER,
+        latitude         REAL,
+        longitude        REAL,
+        created_at       TEXT DEFAULT (datetime('now')),
+        updated_at       TEXT
+      );
+      CREATE TABLE IF NOT EXISTS caretaker_contacts (
+        id TEXT PRIMARY KEY, listing_id TEXT, caretaker_name TEXT,
+        phone TEXT, user_id TEXT,
+        FOREIGN KEY (listing_id) REFERENCES listings(id) ON DELETE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS favourites (
+        id TEXT PRIMARY KEY, user_uid TEXT NOT NULL, listing_id TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')), UNIQUE(user_uid, listing_id)
+      );
+      CREATE TABLE IF NOT EXISTS reviews (
+        id TEXT PRIMARY KEY, listing_id TEXT NOT NULL, user_uid TEXT NOT NULL,
+        rating INTEGER, comment TEXT, created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (listing_id) REFERENCES listings(id) ON DELETE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS payments (
+        id TEXT PRIMARY KEY, user_uid TEXT, listing_id TEXT, amount REAL,
+        status TEXT DEFAULT 'pending', method TEXT, created_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS reports (
+        id TEXT PRIMARY KEY, user_uid TEXT, listing_id TEXT, reason TEXT,
+        details TEXT, status TEXT DEFAULT 'open', created_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS storage_seekers (
+        id TEXT PRIMARY KEY, user_uid TEXT, name TEXT, phone TEXT,
+        location TEXT, note TEXT, created_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS storage_hosts (
+        id TEXT PRIMARY KEY, user_uid TEXT, name TEXT, phone TEXT,
+        location TEXT, space_size TEXT, price REAL, available INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS storage_bookings (
+        id TEXT PRIMARY KEY, seeker_id TEXT, host_id TEXT, status TEXT DEFAULT 'pending',
+        start_date TEXT, end_date TEXT, created_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS host_verifications (
+        id TEXT PRIMARY KEY, user_uid TEXT, status TEXT DEFAULT 'pending',
+        doc_url TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_listings_location  ON listings(location);
+      CREATE INDEX IF NOT EXISTS idx_listings_type      ON listings(type);
+      CREATE INDEX IF NOT EXISTS idx_listings_available ON listings(available);
+      CREATE INDEX IF NOT EXISTS idx_favourites_user    ON favourites(user_uid);
+      CREATE INDEX IF NOT EXISTS idx_reviews_listing    ON reviews(listing_id);
+      CREATE INDEX IF NOT EXISTS idx_caretaker_listing  ON caretaker_contacts(listing_id);
     `);
   }
 
@@ -284,6 +352,43 @@ class WarenVault {
 
   deleteUserSessions(userId) {
     return this.db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+  }
+
+
+  // ── NestFinderCuk helpers ──────────────────────────────────────────────────
+
+  _nestList(table, filters = {}) {
+    let sql = `SELECT * FROM ${table} WHERE 1=1`;
+    const vals = [];
+    for (const [k, v] of Object.entries(filters)) {
+      const safe = k.replace(/[^a-zA-Z0-9_]/g, '');
+      if (safe) { sql += ` AND ${safe} = ?`; vals.push(v); }
+    }
+    sql += ` ORDER BY rowid DESC`;
+    return this.db.prepare(sql).all(...vals);
+  }
+
+  _nestGet(table, id) {
+    return this.db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id) || null;
+  }
+
+  _nestCreate(table, doc) {
+    const keys = Object.keys(doc);
+    const sql = `INSERT OR IGNORE INTO ${table} (${keys.join(',')}) VALUES (${keys.map(() => '?').join(',')})`;
+    return this.db.prepare(sql).run(...Object.values(doc));
+  }
+
+  _nestPatch(table, id, fields) {
+    const safe = Object.fromEntries(
+      Object.entries(fields).map(([k, v]) => [k.replace(/[^a-zA-Z0-9_]/g, ''), v])
+    );
+    const sets = Object.keys(safe).map(k => `${k} = ?`).join(', ');
+    return this.db.prepare(`UPDATE ${table} SET ${sets}, updated_at = datetime('now') WHERE id = ?`)
+      .run(...Object.values(safe), id);
+  }
+
+  _nestDelete(table, id) {
+    return this.db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
   }
 
   close() {

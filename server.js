@@ -245,6 +245,7 @@ app.get('/health', (req, res) => {
 // ── NestFinderCuk REST API ────────────────────────────────────────────────────
 
 const NEST_COLLECTIONS = [
+  'users',
   'listings','caretaker_contacts','favourites','reviews',
   'payments','reports','storage_seekers','storage_hosts',
   'storage_bookings','host_verifications'

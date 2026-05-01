@@ -310,8 +310,8 @@ app.post('/nest/listings/import', (req, res) => {
   res.json({ imported: count });
 });
 
-minio.initialize().then(() => {
-  seedDefaultAdmin();
+minio.initialize().then(async () => {
+  await seedDefaultAdmin();
   app.listen(PORT, () => {
     console.log('WarenVault Media Storage v4.0');
     console.log(` Running on http://localhost:${PORT}`);

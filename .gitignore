@@ -144,11 +144,5 @@ vite.config.ts.timestamp-*
 uploads/
 processed/
 db.json
-warenvault.db
-warenvault.db-shm
-warenvault.db-wal
 minio.exe
 minio-data/
-warenvault.db
-warenvault.db-shm
-warenvault.db-wal

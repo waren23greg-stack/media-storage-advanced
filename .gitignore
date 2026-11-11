@@ -151,3 +151,6 @@ minio-data/
 *.db
 *.db-shm
 *.db-wal
+
+# Local file storage
+storage/

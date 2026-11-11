@@ -32,6 +32,7 @@ app.use(express.static(__dirname));
 
 const uploadsDir = path.join(__dirname, 'uploads');
 const processedDir = path.join(__dirname, 'processed');
+for (const d of [uploadsDir, processedDir]) fs.mkdirSync(d, { recursive: true });
 
 const multerStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),

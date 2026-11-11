@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+require('express-async-errors');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -52,7 +53,7 @@ const upload = multer({
   fileFilter: (req, file, cb) => {
     ALLOWED_MIMETYPES.includes(file.mimetype)
       ? cb(null, true)
-      : cb(new Error('Only images and videos allowed'));
+      : cb(Object.assign(new Error('Only images and videos allowed'), { status: 400 }));
   },
   limits: { fileSize: 500 * 1024 * 1024 }
 });
@@ -101,6 +102,7 @@ async function processAndStore(inputPath, filename, mimetype) {
 
 app.post('/auth/register', authLimiter, async (req, res) => {
   const { username, email, password } = req.body;
+  if (!username || !email || typeof password !== "string") return res.status(400).json({ error: "username, email and password are required." });
   if (password.length < 6)          return res.status(400).json({ error: 'Password min 6 characters.' });
   if (db.getUserByEmail(email))     return res.status(409).json({ error: 'Email already registered.' });
   if (db.getUserByUsername(username)) return res.status(409).json({ error: 'Username taken.' });
@@ -119,6 +121,7 @@ app.post('/auth/register', authLimiter, async (req, res) => {
 
 app.post('/auth/login', authLimiter, async (req, res) => {
   const { email, password } = req.body;
+  if (!email || typeof password !== "string") return res.status(400).json({ error: "email and password are required." });
   const user = db.getUserByEmail(email);
   if (!user) return res.status(401).json({ error: 'Invalid credentials.' });
   const match = await bcrypt.compare(password, user.password);
@@ -243,6 +246,13 @@ app.get('/health', (req, res) => {
 // ── Start ──────────────────────────────────────────────────────────────────
 
 
+// Central error handler: a failing route returns an error, it never kills the server
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  const status = err.status || (err.name === "MulterError" ? 400 : 500);
+  console.error("[ERROR]", req.method, req.path, err.message);
+  res.status(status).json({ error: status === 500 ? "Internal server error" : err.message });
+});
 minio.initialize().then(async () => {
   await seedDefaultAdmin();
   app.listen(PORT, () => {

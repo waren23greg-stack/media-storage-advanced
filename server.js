@@ -28,7 +28,7 @@ app.use(hpp());
 app.use(sanitizeBody);
 app.use(cors());
 app.use(express.json());
-app.use(express.static(__dirname));
+app.use(express.static(path.join(__dirname, 'public')));
 
 const uploadsDir = path.join(__dirname, 'uploads');
 const processedDir = path.join(__dirname, 'processed');

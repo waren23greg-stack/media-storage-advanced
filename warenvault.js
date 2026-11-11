@@ -1,7 +1,9 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 
-const DB_PATH = path.join(__dirname, 'warenvault.db');
+const fs = require('fs');
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'warenvault.db');
+fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // In-memory TTL query cache

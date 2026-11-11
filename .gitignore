@@ -146,3 +146,8 @@ processed/
 db.json
 minio.exe
 minio-data/
+
+# SQLite runtime data
+*.db
+*.db-shm
+*.db-wal

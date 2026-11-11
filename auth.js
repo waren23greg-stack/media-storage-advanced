@@ -2,7 +2,11 @@ const jwt = require('jsonwebtoken');
 const db = require('./warenvault');
 const crypto = require('crypto');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'warenvault-secret-key-2024';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error("JWT_SECRET is not set. Set it in .env (local) or the host environment.");
+  process.exit(1);
+}
 const JWT_EXPIRE = process.env.JWT_EXPIRE || '7d';
 
 function generateToken(user) {
@@ -51,19 +55,24 @@ function adminOnly(req, res, next) {
 
 module.exports = { generateToken, hashToken, authenticate, adminOnly };
 
-// Auto-seed default admin on startup
+// Optional first account, created only when ADMIN_EMAIL and ADMIN_PASSWORD are set
 async function seedDefaultAdmin() {
-  const db = require('./warenvault');
-  const crypto = require('crypto');
-  const bcrypt = require('bcryptjs');
-  const existing = db.getUserByEmail('gregewaren@gmail.com');
-  if (!existing) {
-    const uuid = crypto.randomUUID();
-    const hashed = await bcrypt.hash('Admin1234', 12);
-    db.createUser(uuid, 'gregewaren', 'gregewaren@gmail.com', hashed);
-    console.log('[Seed] Admin account created: gregewaren@gmail.com');
-  } else {
-    console.log('[Seed] Admin account already exists');
+  const { ADMIN_EMAIL, ADMIN_PASSWORD, ADMIN_USERNAME } = process.env;
+  if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+    console.log('[Seed] ADMIN_EMAIL / ADMIN_PASSWORD not set, skipping');
+    return;
+  }
+  if (db.getUserByEmail(ADMIN_EMAIL)) {
+    console.log('[Seed] Account already exists');
+    return;
+  }
+  try {
+    const bcrypt = require('bcryptjs');
+    const hashed = await bcrypt.hash(ADMIN_PASSWORD, 12);
+    db.createUser(crypto.randomUUID(), ADMIN_USERNAME || 'admin', ADMIN_EMAIL, hashed);
+    console.log('[Seed] Account created');
+  } catch (err) {
+    console.warn('[Seed] Could not create account:', err.message);
   }
 }
 module.exports.seedDefaultAdmin = seedDefaultAdmin;

@@ -913,7 +913,7 @@ input[type="file"] { display: none; }
       <div class="stat-card" style="animation-delay:0.3s">
         <div class="stat-label">Avg Compression</div>
         <div class="stat-value amber" id="stat-compression">0%</div>
-        <div class="stat-sub">114% quality boost</div>
+        <div class="stat-sub">average size reduction</div>
       </div>
     </div>
 
@@ -1149,7 +1149,7 @@ async function loadFiles() {
           <div class="file-name">${f.original_name}</div>
           <div class="file-badges">
             <span class="badge badge-cyan">${sizeMB} MB</span>
-            <span class="badge badge-green">114% quality</span>
+            <span class="badge badge-green">${f.original_size ? Math.max(0, Math.round((1 - f.size / f.original_size) * 100)) : 0}% smaller</span>
           </div>
         </div>
         <div class="file-actions">

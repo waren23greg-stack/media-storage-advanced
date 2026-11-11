@@ -77,12 +77,19 @@ async function processImage(inputPath, outputPath) {
   else                      pipeline = pipeline.jpeg({ quality: 88, progressive: true, mozjpeg: true });
 
   await pipeline.toFile(outputPath);
-  const finalSize = getFileSize(outputPath);
+  let finalSize = getFileSize(outputPath);
+  let quality = 'Optimized';
+  if (finalSize >= originalSize) {
+    // processing made it bigger: keep the original bytes so a file never grows
+    fs.copyFileSync(inputPath, outputPath);
+    finalSize = originalSize;
+    quality = 'Original kept';
+  }
   return {
     originalSize,
     finalSize,
     compressionRatio: parseFloat(((1 - finalSize / originalSize) * 100).toFixed(2)),
-    quality: 'Enhanced 114%'
+    quality
   };
 }
 
@@ -187,12 +194,13 @@ app.post('/upload', authenticate, uploadLimiter, upload.single('file'), validate
     db.updateStorageUsed(req.user.id, stats.finalSize);
     res.json({
       success: true,
-      message: `WarenVault stored in MinIO — compressed ${stats.compressionRatio}% with 114% quality boost!`,
+      message: `Stored on ${minio.mode() === 'minio' ? 'MinIO' : 'local disk'}. Size change: ${stats.compressionRatio}% (${stats.quality}).`,
       file: { ...fileRecord, quality: stats.quality }
     });
   } catch (error) {
     console.error('[UPLOAD]', error.message);
-    res.status(500).json({ error: 'File processing failed' });
+    const unreadable = /unsupported image format|corrupt|Input (file|buffer)/i.test(error.message);
+    res.status(unreadable ? 400 : 500).json({ error: unreadable ? 'This file could not be read as a valid image.' : 'File processing failed' });
   }
 });
 
@@ -233,8 +241,8 @@ app.get('/stats', authenticate, (req, res) => {
     totalFinalSize: stats.total_final_size || 0,
     averageCompression: parseFloat((stats.avg_compression || 0).toFixed(2)),
     totalStorageSaved: (saved / (1024 * 1024)).toFixed(2) + ' MB',
-    enhancement: '114% quality boost',
-    storage: 'MinIO WarenVault'
+    enhancement: 'sharpen + normalize; original kept if the result is larger',
+    storage: minio.mode()
   });
 });
 
@@ -243,7 +251,7 @@ app.get('/health', (req, res) => {
     status: 'WarenVault is running',
     version: '4.0.0',
     database: 'WarenVault SQLite + Query Cache',
-    storage: 'MinIO'
+    storage: minio.mode()
   });
 });
 

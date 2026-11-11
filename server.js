@@ -89,13 +89,16 @@ async function processImage(inputPath, outputPath) {
 async function processAndStore(inputPath, filename, mimetype) {
   const processedFilename = 'processed-' + filename;
   const outputPath = path.join(processedDir, processedFilename);
-  const stats = await processImage(inputPath, outputPath);
-  const objectName = 'files/' + processedFilename;
-  await minio.uploadFile(outputPath, objectName, mimetype);
-  const url = await minio.getFileUrl(objectName);
-  fs.unlinkSync(inputPath);
-  fs.unlinkSync(outputPath);
-  return { objectName, url, stats };
+  try {
+    const stats = await processImage(inputPath, outputPath);
+    const objectName = 'files/' + processedFilename;
+    await minio.uploadFile(outputPath, objectName, mimetype);
+    const url = await minio.getFileUrl(objectName);
+    return { objectName, url, stats };
+  } finally {
+    fs.rmSync(inputPath, { force: true });
+    fs.rmSync(outputPath, { force: true });
+  }
 }
 
 // ── Auth ───────────────────────────────────────────────────────────────────
@@ -188,7 +191,8 @@ app.post('/upload', authenticate, uploadLimiter, upload.single('file'), validate
       file: { ...fileRecord, quality: stats.quality }
     });
   } catch (error) {
-    res.status(500).json({ error: 'File processing failed', details: error.message });
+    console.error('[UPLOAD]', error.message);
+    res.status(500).json({ error: 'File processing failed' });
   }
 });
 
@@ -246,6 +250,17 @@ app.get('/health', (req, res) => {
 // ── Start ──────────────────────────────────────────────────────────────────
 
 
+// Signed, expiring links for local-disk storage (MinIO uses its own presigned URLs)
+app.get('/media/*', (req, res) => {
+  const objectName = req.params[0];
+  if (!minio.verifySignedUrl(objectName, req.query.exp, req.query.sig)) {
+    return res.status(403).json({ error: 'Invalid or expired link.' });
+  }
+  const file = minio.localPath(objectName);
+  if (!fs.existsSync(file)) return res.status(404).json({ error: 'File not found.' });
+  res.sendFile(file, { dotfiles: 'allow' });
+});
+
 // Central error handler: a failing route returns an error, it never kills the server
 app.use((err, req, res, next) => {
   if (res.headersSent) return next(err);
@@ -253,20 +268,13 @@ app.use((err, req, res, next) => {
   console.error("[ERROR]", req.method, req.path, err.message);
   res.status(status).json({ error: status === 500 ? "Internal server error" : err.message });
 });
-minio.initialize().then(async () => {
-  await seedDefaultAdmin();
+minio.initialize().then(seedDefaultAdmin).then(() => {
   app.listen(PORT, () => {
     console.log('WarenVault Media Storage v4.0');
     console.log(` Running on http://localhost:${PORT}`);
-    console.log(' Database: WarenVault SQLite + Query Cache');
-    console.log(' Cloud Storage: MinIO (warenvault bucket)');
-    console.log(' Auth: JWT enabled');
+    console.log(` Storage mode: ${minio.mode()}`);
   });
-}).catch(async (err) => {
-  console.warn('MinIO unavailable, continuing without cloud storage:', err.message);
-  await seedDefaultAdmin();
-  app.listen(PORT, () => {
-    console.log('WarenVault running on port ' + PORT);
-    console.log('Database: SQLite | Storage: local fallback');
-  });
+}).catch((err) => {
+  console.error('Startup failed:', err.message);
+  process.exit(1);
 });

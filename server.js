@@ -93,13 +93,20 @@ async function processImage(inputPath, outputPath) {
   };
 }
 
+// Videos are stored untouched: nothing here can safely re-encode them (see README)
+function storeAsIs(inputPath) {
+  const size = getFileSize(inputPath);
+  return { originalSize: size, finalSize: size, compressionRatio: 0, quality: 'Stored as-is' };
+}
+
 async function processAndStore(inputPath, filename, mimetype) {
   const processedFilename = 'processed-' + filename;
   const outputPath = path.join(processedDir, processedFilename);
   try {
-    const stats = await processImage(inputPath, outputPath);
+    const isVideo = mimetype.startsWith('video/');
+    const stats = isVideo ? storeAsIs(inputPath) : await processImage(inputPath, outputPath);
     const objectName = 'files/' + processedFilename;
-    await minio.uploadFile(outputPath, objectName, mimetype);
+    await minio.uploadFile(isVideo ? inputPath : outputPath, objectName, mimetype);
     const url = await minio.getFileUrl(objectName);
     return { objectName, url, stats };
   } finally {

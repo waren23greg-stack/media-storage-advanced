@@ -125,7 +125,10 @@ app.post('/auth/register', authLimiter, async (req, res) => {
     success: true,
     message: `Welcome to WarenVault, ${username}!`,
     token,
-    user: { id: user.uuid, username: user.username, email: user.email, role: user.role }
+    user: {
+      id: user.uuid, username: user.username, email: user.email, role: user.role,
+      storageUsed: user.storage_used, storageLimit: user.storage_limit
+    }
   });
 });
 

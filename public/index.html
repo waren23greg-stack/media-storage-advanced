@@ -1109,7 +1109,7 @@ async function loadStats() {
     const usedMB = (stats.totalFinalSize / (1024*1024)).toFixed(1);
     const savedMB = (Math.max(0, stats.totalOriginalSize - stats.totalFinalSize) / (1024*1024)).toFixed(1);
     const limitGB = currentUser ? (currentUser.storageLimit / (1024*1024*1024)).toFixed(0) : 5;
-    const pct = currentUser ? ((currentUser.storageUsed / currentUser.storageLimit) * 100).toFixed(1) : 0;
+    const pct = currentUser ? ((stats.totalFinalSize / currentUser.storageLimit) * 100).toFixed(1) : 0;
     document.getElementById('stat-files').textContent = stats.totalFiles;
     document.getElementById('stat-used').textContent = usedMB + ' MB';
     document.getElementById('stat-limit').textContent = limitGB + ' GB';

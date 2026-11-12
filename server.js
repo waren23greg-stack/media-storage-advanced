@@ -81,7 +81,7 @@ async function processImage(inputPath, outputPath) {
   let quality = 'Optimized';
   if (finalSize >= originalSize) {
     // processing made it bigger: keep the original bytes so a file never grows
-    fs.copyFileSync(inputPath, outputPath);
+    await fs.promises.copyFile(inputPath, outputPath);
     finalSize = originalSize;
     quality = 'Original kept';
   }

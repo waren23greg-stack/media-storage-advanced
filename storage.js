@@ -67,7 +67,7 @@ async function uploadFile(localFile, objectName, mimetype) {
   } else {
     const dest = localPath(objectName);
     fs.mkdirSync(path.dirname(dest), { recursive: true });
-    fs.copyFileSync(localFile, dest);
+    await fs.promises.copyFile(localFile, dest);
   }
   return objectName;
 }

@@ -172,7 +172,6 @@ class TestSuite {
       this.log(`   Processed Size: ${(stats.totalFinalSize / (1024 * 1024)).toFixed(2)} MB`, 'info');
       this.log(`   Avg Compression: ${stats.averageCompression}%`, 'success');
       this.log(`   Storage Saved: ${stats.totalStorageSaved}`, 'success');
-      this.log(`   Quality Boost: 114%`, 'success');
       this.passedTests++;
     } catch (error) {
       this.log(`Stats error: ${error.message}`, 'error');

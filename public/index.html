@@ -946,7 +946,7 @@ input[type="file"] { display: none; }
 
           <div class="progress-wrap" id="progress-wrap">
             <div class="progress-info">
-              <span>Processing</span>
+              <span id="progress-label">Uploading</span>
               <span id="progress-pct">0%</span>
             </div>
             <div class="progress-track">
@@ -1193,49 +1193,67 @@ function downloadFile(url) {
   document.body.appendChild(a); a.click(); a.remove();
 }
 
-async function uploadFile() {
+function uploadFile() {
   const file = fileInput.files[0];
   if (!file) return;
   const btn = document.getElementById('upload-btn');
   const progressWrap = document.getElementById('progress-wrap');
   const progressBar = document.getElementById('progress-bar');
   const progressPct = document.getElementById('progress-pct');
+  const progressLabel = document.getElementById('progress-label');
+  const mb = n => (n / (1024 * 1024)).toFixed(1);
+  const setLabel = t => { if (progressLabel) progressLabel.textContent = t; };
+  const resetProgress = () => {
+    progressWrap.classList.remove('visible');
+    progressBar.style.width = '0%';
+    progressPct.textContent = '0%';
+    setLabel('Uploading');
+  };
   btn.disabled = true;
   progressWrap.classList.add('visible');
-  let p = 0;
-  const interval = setInterval(() => {
-    p += Math.random() * 25;
-    if (p > 90) p = 90;
-    progressBar.style.width = p + '%';
-    progressPct.textContent = Math.floor(p) + '%';
-  }, 200);
-  try {
-    const form = new FormData();
-    form.append('file', file);
-    const res = await fetch(`${API}/upload`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-      body: form
-    });
-    const data = await res.json();
-    clearInterval(interval);
+  progressBar.style.width = '0%';
+  progressPct.textContent = '0%';
+  setLabel('Uploading');
+
+  const form = new FormData();
+  form.append('file', file);
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', API + '/upload');
+  xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+
+  xhr.upload.onprogress = e => {
+    if (!e.lengthComputable) return;
+    const pct = Math.min(100, Math.floor((e.loaded / e.total) * 100));
+    progressBar.style.width = pct + '%';
+    progressPct.textContent = pct + '% (' + mb(e.loaded) + ' / ' + mb(e.total) + ' MB)';
+  };
+  xhr.upload.onload = () => {
     progressBar.style.width = '100%';
     progressPct.textContent = '100%';
-    if (!res.ok) { toast(data.error || 'Upload failed', 'error'); return; }
-    toast(data.message, 'success');
+    setLabel('Saving on server');
+  };
+  const fail = msg => {
+    toast(msg, 'error');
+    btn.disabled = false;
+    setTimeout(resetProgress, 1500);
+  };
+  xhr.onload = () => {
+    let data = {};
+    try { data = JSON.parse(xhr.responseText); } catch (e) {}
+    if (xhr.status < 200 || xhr.status >= 300) {
+      fail(data.error || ('Upload failed (HTTP ' + xhr.status + ')'));
+      return;
+    }
+    toast(data.message || 'Uploaded', 'success');
     fileInput.value = '';
     document.getElementById('selected-file').classList.remove('visible');
-    setTimeout(() => {
-      progressWrap.classList.remove('visible');
-      progressBar.style.width = '0%';
-      loadDashboard();
-    }, 800);
-  } catch(e) {
-    clearInterval(interval);
-    toast('Upload failed. Check server connection.', 'error');
-  } finally {
     btn.disabled = false;
-  }
+    setTimeout(() => { resetProgress(); loadDashboard(); }, 800);
+  };
+  xhr.onerror = () => fail('Upload failed. Check server connection.');
+  xhr.onabort = () => fail('Upload cancelled.');
+  xhr.ontimeout = () => fail('Upload timed out.');
+  xhr.send(form);
 }
 
 async function deleteFile(uuid) {

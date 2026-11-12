@@ -219,7 +219,10 @@ app.get('/files', authenticate, async (req, res) => {
   const filesWithUrls = await Promise.all(
     files.map(async file => {
       const freshUrl = await minio.getFileUrl(file.filename);
-      return { ...file, url: freshUrl };
+      const downloadUrl = freshUrl.startsWith('/media/')
+        ? freshUrl + '&dl=' + encodeURIComponent(file.original_name).replace(/'/g, '%27')
+        : freshUrl;
+      return { ...file, url: freshUrl, downloadUrl };
     })
   );
   res.json(filesWithUrls);
@@ -276,6 +279,8 @@ app.get('/media/*', (req, res) => {
   }
   const file = minio.localPath(objectName);
   if (!fs.existsSync(file)) return res.status(404).json({ error: 'File not found.' });
+  const dl = typeof req.query.dl === 'string' ? path.basename(req.query.dl).slice(0, 255) : '';
+  if (dl) return res.download(file, dl, { dotfiles: 'allow' });
   res.sendFile(file, { dotfiles: 'allow' });
 });
 

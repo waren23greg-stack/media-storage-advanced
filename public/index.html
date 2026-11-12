@@ -1153,7 +1153,7 @@ async function loadFiles() {
           </div>
         </div>
         <div class="file-actions">
-          <button class="btn-dl" onclick="window.open('${f.url}')">Download</button>
+          <button class="btn-dl" onclick="downloadFile('${f.downloadUrl || f.url}')">Download</button>
           <button class="btn-rm" onclick="deleteFile('${f.uuid}')">Delete</button>
         </div>
       </div>`;
@@ -1185,6 +1185,12 @@ function selectFile(file) {
   sel.textContent = `${file.name} — ${sizeMB} MB`;
   sel.classList.add('visible');
   document.getElementById('upload-btn').disabled = false;
+}
+
+function downloadFile(url) {
+  const a = document.createElement('a');
+  a.href = url; a.download = ''; a.target = '_blank'; a.rel = 'noopener';
+  document.body.appendChild(a); a.click(); a.remove();
 }
 
 async function uploadFile() {

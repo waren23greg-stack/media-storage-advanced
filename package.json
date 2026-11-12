@@ -1,7 +1,7 @@
 {
   "name": "media-storage-server-advanced",
-  "version": "2.0.0",
-  "description": "Advanced Firebase Storage alternative with 43.5% compression + 114% quality enhancement",
+  "version": "4.0.0",
+  "description": "Self-hosted media storage with accounts, image optimization and a web dashboard",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
